@@ -25,7 +25,6 @@ cmake \
   -D CMAKE_CXX_FLAGS="-I${MPICH_DIR}/include" \
   -D CMAKE_CXX_STANDARD=17 \
   -D CMAKE_CXX_COMPILER=hipcc \
-  -D CMAKE_Fortran_FLAGS=-hnopattern \
   -D BUILD_SHARED_LIBS=OFF \
   -D TPL_ENABLE_MPI=ON \
   -D BLAS_LIBRARY_DIRS=${OLCF_OPENBLAS_ROOT}/lib \
@@ -55,8 +54,7 @@ cmake \
   -D Kokkos_ENABLE_HIP=ON \
   -D Kokkos_ARCH_AMD_GFX90A:BOOL=ON \
   -D Trilinos_ENABLE_Tpetra=ON \
-  -D Tpetra_INST_COMPLEX_DOUBLE=OFF \
-  -D Tpetra_INST_COMPLEX_FLOAT=OFF \
+  -D Trilinos_ENABLE_COMPLEX=ON \
   -D Tpetra_INST_SERIAL=ON \
   -D Tpetra_INST_OPENMP=ON \
   -D Tpetra_INST_HIP=ON \
