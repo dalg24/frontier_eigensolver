@@ -47,12 +47,13 @@ cmake --build builddir
 
 ### Run the Example
 
-Execute the compiled program. This will demonstrate the Anasazi solver in
-action.
+Execute the compiled program in help mode. This will print the commandline options
 
 ```bash
-./builddir/eigensolver
+./builddir/eigensolver --help
 ```
+
+Per default it computes the 3 lowest Evals of the matrix in matrix_export.mtx via a BlockKrylovSchur solver up to machine precision.
 
 You should see output indicating the progress of the eigenvalue solver and the
 computed eigenvalues.
