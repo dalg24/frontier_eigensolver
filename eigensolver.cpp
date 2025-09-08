@@ -10,8 +10,9 @@
 #include "AnasaziBasicEigenproblem.hpp"
 #include "AnasaziTpetraAdapter.hpp"
 #include "AnasaziStatusTestDecl.hpp"
-//#include "AnasaziLOBPCGSolMgr.hpp"
+#include "AnasaziLOBPCGSolMgr.hpp"
 #include "AnasaziBlockDavidsonSolMgr.hpp"
+#include "AnasaziBlockKrylovSchurSolMgr.hpp"
 #include "AnasaziTypes.hpp"
 #include "Teuchos_GlobalMPISession.hpp"
 #include "Tpetra_Core.hpp"
@@ -23,10 +24,13 @@ using Teuchos::ArrayView;
 using std::cout;
 using std::endl;
 // These define convenient aliases
-typedef double                                   Scalar;
+typedef std::complex<double>                  Scalar;
 typedef Tpetra::MultiVector<Scalar>              TMV;
 typedef Tpetra::Vector<Scalar>                   Vector;
 typedef Tpetra::Operator<Scalar>                 TOP;
+
+#include <typeinfo>
+
 
 int
 main (int argc, char* argv[])
@@ -34,7 +38,7 @@ main (int argc, char* argv[])
   typedef Anasazi::BasicEigenproblem<Scalar,TMV,TOP> Problem;
   typedef Anasazi::MultiVecTraits<Scalar, TMV> TMVT;
   typedef Anasazi::OperatorTraits<Scalar, TMV, TOP> TOPT;
-  typedef Tpetra::CrsMatrix<> CrsMatrix;
+  typedef Tpetra::CrsMatrix<Scalar> CrsMatrix;
   typedef Tpetra::MatrixMarket::Reader<CrsMatrix>  Reader;
   Tpetra::ScopeGuard tpetraScope (&argc, &argv);
   //
@@ -42,74 +46,44 @@ main (int argc, char* argv[])
   //
   RCP<const Teuchos::Comm<int> > comm = Tpetra::getDefaultComm ();
   const int myRank = comm->getRank();
-  // Read the command line arguments
-  //std::string fileA ("/u/slotnick_s2/aklinvex/matrices/anderson4.mtx");
-  //Teuchos::CommandLineProcessor cmdp (false, true);
-  //cmdp.setOption ("fileA", &fileA, "Filename for the Matrix-Market stiffness matrix.");
-  //if (cmdp.parse (argc,argv) != Teuchos::CommandLineProcessor::PARSE_SUCCESSFUL) {
-  //  return -1;
-  //}
-  // Get the matrix
-  //RCP<const CrsMatrix> A = Reader::readSparseFile (fileA, comm);
 
-  // The number of rows and columns in the matrix.
-    const Tpetra::global_size_t numGblIndices = 100;
-    // Construct a Map that puts approximately the same number of
-    // equations on each processor.
-    const Tpetra::Vector<>::global_ordinal_type indexBase = 0;
-    RCP<const Tpetra::Map<>> map =
-      rcp (new Tpetra::Map<> (numGblIndices, indexBase, comm));
-    const size_t numMyElements = map->getLocalNumElements ();
-    // If you like, you may get the list of global indices that the
-    // calling process owns.  This is unnecessary if you don't mind
-    // converting local indices to global indices.
-    //
-    // ArrayView<const global_ordinal_type> myGlobalElements =
-    //   map->getLocalElementList ();
-    if (myRank == 0) {
-      cout << endl << "Creating the sparse matrix" << endl;
-    }
-    // Create a Tpetra sparse matrix whose rows have distribution
-    // given by the Map.  We expect at most three entries per row.
-    RCP<Tpetra::CrsMatrix<>> A (new Tpetra::CrsMatrix<> (map, 3));
-    // Fill the sparse matrix, one row at a time.
-    const Scalar two = static_cast<Scalar> (2.0);
-    const Scalar negOne = static_cast<Scalar> (-1.0);
-    for (Tpetra::Vector<>::local_ordinal_type lclRow = 0;
-   lclRow < static_cast<Tpetra::Vector<>::local_ordinal_type> (numMyElements);
-   ++lclRow) {
-      const Tpetra::Vector<>::global_ordinal_type gblRow = map->getGlobalElement (lclRow);
-      // A(0, 0:1) = [2, -1]
-      if (gblRow == 0) {
-  A->insertGlobalValues (gblRow,
-             Teuchos::tuple<Tpetra::Vector<>::global_ordinal_type> (gblRow, gblRow + 1),
-             Teuchos::tuple<Scalar> (two, negOne));
-      }
-      // A(N-1, N-2:N-1) = [-1, 2]
-      else if (static_cast<Tpetra::global_size_t> (gblRow) == numGblIndices - 1) {
-  A->insertGlobalValues (gblRow,
-             Teuchos::tuple<Tpetra::Vector<>::global_ordinal_type> (gblRow - 1, gblRow),
-             Teuchos::tuple<Scalar> (negOne, two));
-      }
-      // A(i, i-1:i+1) = [-1, 2, -1]
-      else {
-  A->insertGlobalValues (gblRow,
-             Teuchos::tuple<Tpetra::Vector<>::global_ordinal_type> (gblRow - 1, gblRow, gblRow + 1),
-             Teuchos::tuple<Scalar> (negOne, two, negOne));
-      }
-    }
-    // Tell the sparse matrix that we are done adding entries to it.
-    A->fillComplete ();
+
+  enum solver_types { BlockKrylovSchur, BlockDavidson, LOBPCG };
+  solver_types solver_types_opt[] = { BlockKrylovSchur, BlockDavidson, LOBPCG };
+  const char* solver_names[] = { "BlockKrylovSchur", "BlockDavidson", "LOBPCG" };
+  // Read the command line arguments
+  std::string filename ("matrix_export.mtx");
+  solver_types solver_enum = solver_types::BlockKrylovSchur;
+  std::string which ("SR");
+  int blockSize = 60;
+  double tol = 1e-15;
+  bool scaled = false;
+  int nev = 3;
+  int max_restarts = 10000;
+  int max_iterations = 1000000;
+
+  Teuchos::CommandLineProcessor cmdp (false, true);
+  cmdp.setOption ("filename", &filename, "Filename for the Matrix-Market stiffness matrix. Default: matrix_export.mtx");
+  cmdp.setOption ("solver", &solver_enum, 3, solver_types_opt, solver_names, "Solver type, one of: BlockKrylovSchur (default), BlockDavidson, LOBPCG");
+  cmdp.setOption ("which", &which, "Which ev are requested, one of: SR(default), LR, SM, LM");
+  cmdp.setOption ("blockSize", &blockSize, "BlockSize of solver. Needs to be > nev. Default: 60");
+  cmdp.setOption ("tol", &tol, "Tolerance to stop iterating. Default: 1e-16");
+  cmdp.setOption ("nev", &nev, "Number of ev calculated. Default: 3");
+  cmdp.setOption ("max_restarts", &max_restarts, "Maximum number of restarts. Default: 10000");
+  cmdp.setOption ("max_iterations", &max_iterations, "Maximum number of iterations. Default: 1000000");
+
+  if (cmdp.parse (argc,argv) != Teuchos::CommandLineProcessor::PARSE_SUCCESSFUL) {
+    return -1;
+  }
+  
+  // Get the matrix
+  RCP<const CrsMatrix> A = Reader::readSparseFile (filename, comm);
 
   // set parameters for solver
-  int blockSize = 40;
-  double tol = 1e-5;
-  bool scaled = true;
-  int nev = 25;
   Teuchos::ParameterList MyPL;
-  MyPL.set ("Which", "SR");
-  MyPL.set ("Maximum Restarts", 10000);
-  MyPL.set ("Maximum Iterations", 1000000);
+  MyPL.set ("Which", which);
+  MyPL.set ("Maximum Restarts", max_restarts);
+  MyPL.set ("Maximum Iterations", max_iterations);
   MyPL.set ("Block Size", blockSize);
   MyPL.set ("Convergence Tolerance", tol );   // How small do the residuals have to be
   MyPL.set ("Relative Convergence Tolerance", scaled);
@@ -126,10 +100,28 @@ main (int argc, char* argv[])
   MyProblem->setNEV (nev);
   // Tell the problem that you are finished passing it information
   MyProblem->setProblem ();
+  Anasazi::ReturnType returnCode=Anasazi::Unconverged;
+
   // Create the eigensolver and give it your problem and parameters.
-  Anasazi::BlockDavidsonSolMgr<Scalar,TMV,TOP> solver (MyProblem, MyPL);
   // Tell the solver to solve the eigenproblem.
-  Anasazi::ReturnType returnCode = solver.solve ();
+  if(solver_enum == solver_types::BlockKrylovSchur)
+  {
+  		Anasazi::BlockKrylovSchurSolMgr<Scalar, TMV, TOP> solver(MyProblem, MyPL);
+  		returnCode = solver.solve ();
+  }
+  else if (solver_enum == solver_types::BlockDavidson)
+  {
+  		Anasazi::BlockDavidsonSolMgr<Scalar,TMV,TOP> solver (MyProblem, MyPL);
+  		returnCode = solver.solve ();
+  }
+  else if (solver_enum == solver_types::LOBPCG)
+  {
+  		Anasazi::LOBPCGSolMgr<Scalar,TMV,TOP> solver (MyProblem, MyPL);
+  		returnCode = solver.solve ();
+  }
+  else 
+		std::cerr << "Unknown solver type specified. See --help \n";
+
   if (returnCode != Anasazi::Converged && myRank == 0) {
     cout << "The solve did NOT converge." << endl;
   } else if (myRank == 0) {
@@ -142,27 +134,30 @@ main (int argc, char* argv[])
   int numev = sol.numVecs;
   // Compute the residual, just as a precaution
   if (numev > 0) {
-    std::vector<Scalar> normR (sol.numVecs);
-    TMV Avec (A->getRowMap (), TMVT::GetNumberVecs (*evecs));
-    TOPT::Apply (*A, *evecs, Avec);
-    Teuchos::SerialDenseMatrix<int,Scalar> T (numev, numev);
-    TMVT::MvTransMv (1.0, Avec, *evecs, T);
-    TMVT::MvTimesMatAddMv (-1.0, *evecs, T, 1.0, Avec);
-    TMVT::MvNorm (Avec, normR);
-    if (myRank == 0) {
-      cout.setf(std::ios_base::right, std::ios_base::adjustfield);
-      cout<<"Actual Eigenvalues: "<<std::endl;
-      cout<<"------------------------------------------------------"<<std::endl;
-      cout<<std::setw(16)<<"Real Part"
-        <<std::setw(16)<<"Error"<<std::endl;
-      cout<<"------------------------------------------------------"<<std::endl;
-      for (int i=0; i<numev; i++) {
-        cout<<std::setw(16)<<T(i,i)
-          <<std::setw(16)<<normR[i]/std::abs(T(i,i))
-          <<std::endl;
-      }
-      cout<<"------------------------------------------------------"<<std::endl;
-    }
+ //   std::vector<Scalar> normR (sol.numVecs);
+ //   TMV Avec (A->getRowMap (), TMVT::GetNumberVecs (*evecs));
+ //   TOPT::Apply (*A, *evecs, Avec);
+ //   Teuchos::SerialDenseMatrix<int,Scalar> T (numev, numev);
+ //   TMVT::MvTransMv (1.0, Avec, *evecs, T);
+ //   TMVT::MvTimesMatAddMv (-1.0, *evecs, T, 1.0, Avec);
+ //   TMVT::MvNorm (Avec, normR);
+ //   if (myRank == 0) {
+ //     cout.setf(std::ios_base::right, std::ios_base::adjustfield);
+ //     cout<<"Actual Eigenvalues: "<<std::endl;
+ //     cout<<"------------------------------------------------------"<<std::endl;
+ //     cout<<std::setw(16)<<"Real Part"
+ //       <<std::setw(16)<<"Error"<<std::endl;
+ //     cout<<"------------------------------------------------------"<<std::endl;
+ //     for (int i=0; i<numev; i++) {
+ //       cout<<std::setw(16)<<T(i,i)
+ //         <<std::setw(16)<<normR[i]/std::abs(T(i,i))
+ //         <<std::endl;
+ //     }
+ //     cout<<"------------------------------------------------------"<<std::endl;
+ //   }
+     for (int i=0; i<numev; i++) {
+      std::cout << "Eigenvalues real " << evals[i].realpart << " imaginary " << evals[i].imagpart << std::endl;
+     }
   }
   return 0;
 }
