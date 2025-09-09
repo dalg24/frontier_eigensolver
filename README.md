@@ -9,10 +9,7 @@ Anasazi is a robust and flexible library for solving large-scale eigenvalue
 problems. This example focuses on demonstrating its basic usage within a
 GPU-accelerated environment on Frontier.
 
-## Using Pre-installed Software on Frontier
-
-This is the recommended approach for most users, leveraging the optimized
-software stack provided on Frontier.
+## Building Trilinos from Source (Required for support of complex numbers)
 
 ### Download the Source
 
@@ -22,6 +19,55 @@ First, clone this repository to your desired location:
 git clone https://github.com/dalg24/frontier_eigensolver.git eigensolver
 cd eigensolver
 ```
+### Building Trilinos
+The repository supplies a helper script
+`build_frontier.sh`. This script automates the process of building
+Trilinos from source with appropriate settings for Frontier including support for complex numbers.
+
+To use it:
+
+```
+module load rocm/6 netcdf-c openblas git parmetis metis cmake
+./build_frontier.sh
+```
+
+**Note:** Building Trilinos from source can be time-consuming and requires
+significant disk space. Refer to the comments within `build_frontier.sh` for
+specific details and potential modifications.
+
+### Configure and Build
+
+Use CMake to configure and build the project. We specify hipcc as the C++
+compiler to ensure GPU offloading is enabled.
+
+```bash
+cmake -B builddir -DCMAKE_CXX_COMPILER=hipcc -DCMAKE_PREFIX_PATH=$HOME/eigensolver/trilinos_install
+cmake --build builddir
+```
+
+### Run the Example
+
+Execute the compiled program in help mode. This will print the commandline options
+
+```bash
+./builddir/eigensolver --help
+```
+
+Per default it computes the 3 lowest Evals of the matrix in `matrix_export.mtx` via a BlockKrylovSchur solver up to machine precision.
+
+You should see output indicating the progress of the eigenvalue solver and the
+computed eigenvalues.
+Useful calculations will look similar to this:
+
+```bash
+./builddir/eigensolver --nev=10 --filename=mymatrixfile.mtx --which=LR --solver=BlockDavidson
+```
+
+## Using Pre-installed Software on Frontier (currently not working with complex valued matrices)
+
+This is the recommended approach for most users, leveraging the optimized
+software stack provided on Frontier. Unfortunately the current software stack does not include Trilinos with enabled complex support
+
 
 ### Load Modules
 
@@ -44,32 +90,3 @@ compiler to ensure GPU offloading is enabled.
 cmake -B builddir -DCMAKE_CXX_COMPILER=hipcc
 cmake --build builddir
 ```
-
-### Run the Example
-
-Execute the compiled program in help mode. This will print the commandline options
-
-```bash
-./builddir/eigensolver --help
-```
-
-Per default it computes the 3 lowest Evals of the matrix in matrix_export.mtx via a BlockKrylovSchur solver up to machine precision.
-
-You should see output indicating the progress of the eigenvalue solver and the
-computed eigenvalues.
-
-## Building Trilinos from Source (Optional)
-For users who require more control over the versions of Kokkos/Trilinos,
-specific configuration options, or development builds, a helper script
-`build_frontier.sh` is provided. This script automates the process of building
-Trilinos from source with appropriate settings for Frontier.
-
-To use it:
-
-```
-./build_frontier.sh
-```
-
-**Note:** Building Trilinos from source can be time-consuming and requires
-significant disk space. Refer to the comments within `build_frontier.sh` for
-specific details and potential modifications.
