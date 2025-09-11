@@ -9,7 +9,49 @@ Anasazi is a robust and flexible library for solving large-scale eigenvalue
 problems. This example focuses on demonstrating its basic usage within a
 GPU-accelerated environment on Frontier.
 
-## Using Pre-installed Software on Frontier
+## Using spack
+
+One simple way to install the dependencies is to use the spack package manager.
+Since compiling Trilinos will take considerable disk space, go to a location that has at least >50GB
+
+```bash
+git clone --depth=2 --branch=releases/v1.0 https://github.com/spack/spack.git ./spack
+cd spack
+. share/spack/setup-env.sh
+```
+
+Next we will create a custom environment for the eigensolver (to not accidentially pollute the general environment)
+
+```bash
+spack env create frontier_eigensolver
+spack env activate frontier_eigensolver
+```
+
+Once the environment is activated, we install and load trilinos with gpu and complex number support
+
+```bash
+spack install --add trilinos@16.1.0 +rocm amdgpu_target=gfx90a +complex
+spack load hipcc
+spack load trilinos
+```
+
+Then we can clone the eigensolver with the following steps
+```bash
+git clone https://github.com/dalg24/frontier_eigensolver.git eigensolver
+cd eigensolver
+```
+
+And build it using CMake
+```bash
+cmake -B builddir -DCMAKE_CXX_COMPILER=hipcc
+cmake --build builddir
+```
+
+Nexp proceed to `Run the Example`
+
+# Alternative builds
+
+## Using Pre-installed Software on Frontier (does not work for complex matrices)
 
 This is the recommended approach for most users, leveraging the optimized
 software stack provided on Frontier.
@@ -45,7 +87,7 @@ cmake -B builddir -DCMAKE_CXX_COMPILER=hipcc
 cmake --build builddir
 ```
 
-### Run the Example
+## Run the Example
 
 Execute the compiled program in help mode. This will print the commandline options
 
