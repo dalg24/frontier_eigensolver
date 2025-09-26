@@ -9,7 +9,7 @@ Anasazi is a robust and flexible library for solving large-scale eigenvalue
 problems. This example focuses on demonstrating its basic usage within a
 GPU-accelerated environment on Frontier.
 
-## Building Trilinos from Source (Required for support of complex numbers)
+## Building Trilinos from Source (Required for support of complex numbers, PREFERRED)
 
 ### Download the Source
 
@@ -45,22 +45,42 @@ cmake -B builddir -DCMAKE_CXX_COMPILER=hipcc -DCMAKE_PREFIX_PATH=$HOME/eigensolv
 cmake --build builddir
 ```
 
-### Run the Example
+## Building Trilinos using spack (Works for complex numbers, takes a lot of time and diskspace)
 
-Execute the compiled program in help mode. This will print the commandline options
+One simple way to install the dependencies is to use the spack package manager.
+Since compiling Trilinos will take considerable disk space, go to a location that has at least >50GB
 
 ```bash
-./builddir/eigensolver --help
+git clone --depth=2 --branch=releases/v1.0 https://github.com/spack/spack.git ./spack
+cd spack
+. share/spack/setup-env.sh
 ```
 
-Per default it computes the 3 lowest Evals of the matrix in `matrix_export.mtx` via a BlockKrylovSchur solver up to machine precision.
-
-You should see output indicating the progress of the eigenvalue solver and the
-computed eigenvalues.
-Useful calculations will look similar to this:
+Next we will create a custom environment for the eigensolver (to not accidentially pollute the general environment)
 
 ```bash
-./builddir/eigensolver --nev=10 --filename=mymatrixfile.mtx --which=LR --solver=BlockDavidson
+spack env create frontier_eigensolver
+spack env activate frontier_eigensolver
+```
+
+Once the environment is activated, we install and load trilinos with gpu and complex number support
+
+```bash
+spack install --add trilinos@16.1.0 +rocm amdgpu_target=gfx90a +complex
+spack load hipcc
+spack load trilinos
+```
+
+Then we can clone the eigensolver with the following steps
+```bash
+git clone https://github.com/dalg24/frontier_eigensolver.git eigensolver
+cd eigensolver
+```
+
+And build it using CMake
+```bash
+cmake -B builddir -DCMAKE_CXX_COMPILER=hipcc
+cmake --build builddir
 ```
 
 ## Using Pre-installed Software on Frontier (currently not working with complex valued matrices)
@@ -89,4 +109,22 @@ compiler to ensure GPU offloading is enabled.
 ```bash
 cmake -B builddir -DCMAKE_CXX_COMPILER=hipcc
 cmake --build builddir
+```
+
+## Run the Example
+
+Execute the compiled program in help mode. This will print the commandline options
+
+```bash
+./builddir/eigensolver --help
+```
+
+Per default it computes the 3 lowest Evals of the matrix in `matrix_export.mtx` via a BlockKrylovSchur solver up to machine precision.
+
+You should see output indicating the progress of the eigenvalue solver and the
+computed eigenvalues.
+Useful calculations will look similar to this:
+
+```bash
+./builddir/eigensolver --nev=10 --filename=mymatrixfile.mtx --which=LR --solver=BlockDavidson
 ```
