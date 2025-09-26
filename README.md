@@ -9,7 +9,7 @@ Anasazi is a robust and flexible library for solving large-scale eigenvalue
 problems. This example focuses on demonstrating its basic usage within a
 GPU-accelerated environment on Frontier.
 
-## Building Trilinos from Source (Required for support of complex numbers, PREFERRED)
+## Building Trilinos from Source (Required for support of complex numbers, preferred way)
 
 ### Download the Source
 
